@@ -9,14 +9,11 @@ use Illuminate\Support\ServiceProvider;
 use TheCorps\LaravelCqrs\Bus\CommandBus;
 use TheCorps\LaravelCqrs\Pipeline\Pipeline;
 use Illuminate\Contracts\Container\Container;
+use Illuminate\Contracts\Config\Repository;
 use TheCorps\LaravelCqrs\Pipeline\MetadataResolver;
 use TheCorps\LaravelCqrs\Console\InstallAgentRulesCommand;
 use TheCorps\LaravelCqrs\Exceptions\InvalidPipelineException;
 use TheCorps\LaravelCqrs\Contracts\Interfaces\Pipeline\PipelineBehaviorInterface;
-use TheCorps\LaravelCqrs\Contracts\Attributes\Queries\QueryHandler as QueryHandlerAttr;
-use TheCorps\LaravelCqrs\Contracts\Attributes\Queries\QueryValidator as QueryValidatorAttr;
-use TheCorps\LaravelCqrs\Contracts\Attributes\Commands\CommandHandler as CommandHandlerAttr;
-use TheCorps\LaravelCqrs\Contracts\Attributes\Commands\CommandValidator as CommandValidatorAttr;
 
 /**
  * Service provider that registers the CommandBus and QueryBus with their
@@ -41,7 +38,7 @@ class CqrsServiceProvider extends ServiceProvider
             fn(Container $app): CommandBus => new CommandBus($this->makePipeline(
                 $app,
                 'cqrs.command_pipeline',
-                new MetadataResolver(CommandHandlerAttr::class, CommandValidatorAttr::class),
+                MetadataResolver::forCommands($this->conventions($app)),
             ))
         );
 
@@ -50,7 +47,7 @@ class CqrsServiceProvider extends ServiceProvider
             fn(Container $app): QueryBus => new QueryBus($this->makePipeline(
                 $app,
                 'cqrs.query_pipeline',
-                new MetadataResolver(QueryHandlerAttr::class, QueryValidatorAttr::class),
+                MetadataResolver::forQueries($this->conventions($app)),
             ))
         );
     }
@@ -74,6 +71,25 @@ class CqrsServiceProvider extends ServiceProvider
     }
 
     /**
+     * Whether handlers and validators may be found by naming convention.
+     */
+    private function conventions(Container $app): bool
+    {
+        return (bool) $this->config($app)->get('cqrs.conventions', true);
+    }
+
+    private function config(Container $app): Repository
+    {
+        $config = $app->make('config');
+
+        if (!$config instanceof Repository) {
+            throw new \LogicException('The config repository is not available.');
+        }
+
+        return $config;
+    }
+
+    /**
      * Builds a pipeline from the behavior classes listed under the given config key.
      *
      * Every behavior is resolved from the container. A behavior whose constructor
@@ -90,9 +106,7 @@ class CqrsServiceProvider extends ServiceProvider
      */
     private function makePipeline(Container $app, string $configKey, MetadataResolver $resolver): Pipeline
     {
-        /** @var \Illuminate\Contracts\Config\Repository $config */
-        $config = $app->make('config');
-        $classes = $config->get($configKey);
+        $classes = $this->config($app)->get($configKey);
 
         if (!is_array($classes) || !array_is_list($classes)) {
             throw InvalidPipelineException::notAList($configKey);

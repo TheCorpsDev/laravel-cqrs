@@ -94,4 +94,20 @@ return [
         'attempts' => 1,
     ],
 
+    /*
+    |--------------------------------------------------------------------------
+    | Naming conventions
+    |--------------------------------------------------------------------------
+    |
+    | When enabled, a command or query without a #[CommandHandler] or
+    | #[QueryHandler] attribute is handled by the class in the same namespace
+    | named after it: CreateUserCommand → CreateUserCommandHandler or
+    | CreateUserHandler. Its validator, if any, is found the same way. Classes
+    | found by convention must implement the matching handler or validator
+    | interface. Attributes always take precedence.
+    |
+    */
+
+    'conventions' => true,
+
 ];
