@@ -415,24 +415,28 @@ Wrapping read-only queries in transactions is unnecessary overhead. The default 
 
 ## Coding-agent integration
 
-If your application uses Codex or Claude Code, install the project-local CQRS rules after requiring the package:
+The package ships the rules a coding agent needs to write CQRS code that fits it, as a `laravel-cqrs` skill plus a short guideline. Install them in one of two ways.
+
+**With [Laravel Boost](https://laravel.com/docs/boost)**: run `php artisan boost:install` (or `boost:update`). Boost detects the package and installs its guideline and skill for every agent you selected: Claude Code, Codex, Cursor, GitHub Copilot, Junie and others.
+
+**Without Boost**: run the package command.
 
 ```bash
 php artisan cqrs:install-agent-rules
 ```
 
-The command creates or updates four files in the Laravel application root:
+It creates or updates four files in the application root:
 
 ```text
-AGENTS.md
-CLAUDE.md
+AGENTS.md                              read by Codex, Cursor, GitHub Copilot and most other agents
+CLAUDE.md                              read by Claude Code
 .agents/skills/laravel-cqrs/SKILL.md
 .claude/skills/laravel-cqrs/SKILL.md
 ```
 
-`AGENTS.md` and `CLAUDE.md` receive a marker-delimited block, so existing project instructions are preserved. The two skill copies give both agents the same mandatory CQRS conventions: commands for writes, read-only queries, immutable DTOs, feature-based use-case folders, thin handlers, domain validators, and pipeline invariants. Re-running the command updates only the managed block and managed skills. It refuses to overwrite an existing skill that is not managed by this package.
+`AGENTS.md` and `CLAUDE.md` get the same marker-delimited block pointing to the skill; nothing outside the markers is changed. Symlinked files are written once. Re-run the command after upgrading the package to refresh the rules. It refuses to overwrite a `SKILL.md` that the package did not write.
 
-The integration guides coding agents; it is not a replacement for automated architecture checks or code review. See the [agent integration guide](docs/agent-integration.md) for the complete rules and maintenance details.
+The rules guide agents; they do not replace code review or architecture tests. See the [agent integration guide](docs/agent-integration.md) for details.
 
 ---
 

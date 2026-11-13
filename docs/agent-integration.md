@@ -1,65 +1,67 @@
 # Coding-agent integration
 
-`thecorps/laravel-cqrs` can install shared CQRS guidance for Codex and Claude Code in a consuming Laravel application.
+`thecorps/laravel-cqrs` ships the rules a coding agent needs to write CQRS code that fits the package: when to use a command or a query, where files go, which interfaces and attributes to use, how to dispatch, and which pipeline invariants to keep.
 
-## Installation
+The rules live in one skill, [`resources/boost/skills/laravel-cqrs/SKILL.md`](../resources/boost/skills/laravel-cqrs/SKILL.md), in the [Agent Skills](https://agentskills.io) format. There are two ways to install it; use one.
 
-After installing the package, run this command from the application root:
+## Option 1: Laravel Boost
+
+If the application uses [Laravel Boost](https://laravel.com/docs/boost), run:
+
+```bash
+php artisan boost:install   # or boost:update to pick up newly installed packages
+```
+
+Boost detects the package and offers to install:
+
+- its guideline, [`resources/boost/guidelines/core.blade.php`](../resources/boost/guidelines/core.blade.php), a short overview loaded upfront;
+- its `laravel-cqrs` skill, loaded on demand.
+
+Boost then writes them in the format of every agent you selected (Claude Code, Codex, Cursor, GitHub Copilot, Junie and others) and keeps them updated with `boost:update`.
+
+## Option 2: the package command
+
+Without Boost, run:
 
 ```bash
 php artisan cqrs:install-agent-rules
 ```
 
-It is opt-in. Installing the Composer package never edits application instruction files automatically.
-
-## Generated files
-
-The installer writes the following files relative to Laravel's base path:
+It is opt-in: installing the Composer package never edits application files by itself. The command writes, relative to Laravel's base path:
 
 ```text
-AGENTS.md
-CLAUDE.md
-.agents/skills/laravel-cqrs/SKILL.md
-.claude/skills/laravel-cqrs/SKILL.md
+AGENTS.md                              read by Codex, Cursor, GitHub Copilot and most other agents
+CLAUDE.md                              read by Claude Code
+.agents/skills/laravel-cqrs/SKILL.md   Agent Skills location used by Codex and others
+.claude/skills/laravel-cqrs/SKILL.md   skill location used by Claude Code
 ```
 
-The root instruction files contain a managed section delimited by these markers:
+`AGENTS.md` and `CLAUDE.md` receive the same short block that points to the skill, delimited by:
 
 ```text
 <!-- laravel-cqrs-agent-rules:start -->
 <!-- laravel-cqrs-agent-rules:end -->
 ```
 
-Existing content outside those markers is left unchanged. Re-running the command replaces only that section and skills containing the package's managed-skill marker. If either skill path already contains an unmanaged `SKILL.md`, the command stops before writing any root files.
+An agent that does not support skills still follows the pointer and reads the file.
 
-## Required CQRS rules
+Behavior:
 
-The generated skill applies these conventions whenever an agent creates or changes CQRS code:
+- Content outside the markers is never changed, including blank lines and the file's line endings.
+- Re-running the command replaces the block and the managed skills with the version shipped by the installed package, so run it again after upgrading.
+- Symlinks are respected: if `CLAUDE.md` links to `AGENTS.md`, or `.claude/skills` links to `.agents/skills`, the shared file is written once.
+- If either skill path already holds a `SKILL.md` that was not written by this package (it lacks the `<!-- laravel-cqrs-managed-skill -->` marker), the command stops before writing anything.
 
-- Classify each use case first. Commands perform every state change; queries are read-only and cannot create, update, delete, save, or cause another side effect.
-- Put each use case in its feature directory:
+## What the rules cover
 
-  ```text
-  app/Domain/{Feature}/
-    Commands/{UseCase}/
-      {UseCase}Command.php
-      {UseCase}Handler.php
-      {UseCase}Validator.php
-    Queries/{UseCase}/
-      {UseCase}Query.php
-      {UseCase}Handler.php
-      {UseCase}Validator.php
-  ```
-
-  Validators are present only when domain validation is needed.
-
-- Commands and queries are `final`, immutable DTOs and implement their matching library interface. They declare their handler with `#[CommandHandler]` or `#[QueryHandler]`, and declare a validator attribute only when needed.
-- Handlers implement the relevant handler interface. Commands are dispatched with `CommandBus::dispatch()` and queries with `QueryBus::dispatch()`; handlers are never invoked directly.
-- Use `FormRequest` for HTTP input validation and CQRS validators for domain invariants such as uniqueness and state transitions. Keep handlers as thin orchestrators around models, domain services, and value objects.
-- Preserve pipeline invariants: do not change the pipeline unless the task requires it, keep `HandlerExecutionBehavior` last, and use `TransactionBehavior` only in the command pipeline.
-
-Before completing a task, the agent verifies the classification, feature layout, contracts, bus dispatch, validation boundary, absence of query writes, and pipeline order.
+- Classify the use case first: every state change is a command; query handlers never write.
+- Follow the project's existing structure for CQRS classes; when there is none, use `app/Domain/{Feature}/Commands/{UseCase}/` and `app/Domain/{Feature}/Queries/{UseCase}/`.
+- Commands and queries are `final` immutable DTOs with the matching interface and handler attribute; validators only when a domain rule needs one.
+- Dispatch only through `CommandBus` / `QueryBus`; never call handlers directly.
+- `FormRequest` for transport validation, CQRS validators for domain rules, a unique index for real uniqueness.
+- Keep `HandlerExecutionBehavior` last and `TransactionBehavior` out of the query pipeline.
+- How to test code that dispatches commands.
 
 ## Enforcement boundary
 
-These files make the conventions available automatically to supported coding agents and direct them to treat the rules as mandatory. They are instructions, not a static analyzer or runtime protection. Retain normal code review and add architecture checks separately if your project needs technical enforcement.
+These files are instructions for agents, not a static analyzer or a runtime check. Keep code review, and add architecture tests if the project needs technical enforcement.

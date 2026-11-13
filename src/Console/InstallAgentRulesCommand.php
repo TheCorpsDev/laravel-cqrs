@@ -6,7 +6,7 @@ use Illuminate\Console\Command;
 use TheCorps\LaravelCqrs\Support\AgentRulesInstaller;
 
 /**
- * Installs the Laravel CQRS instructions used by supported coding agents.
+ * Installs the Laravel CQRS instructions used by coding agents.
  */
 class InstallAgentRulesCommand extends Command
 {
@@ -14,7 +14,7 @@ class InstallAgentRulesCommand extends Command
     protected $signature = 'cqrs:install-agent-rules';
 
     /** @var string */
-    protected $description = 'Install Laravel CQRS rules for Codex and Claude Code.';
+    protected $description = 'Install the Laravel CQRS rules for Claude Code, Codex and other AGENTS.md-compatible coding agents.';
 
     /**
      * Installs or refreshes the managed agent instruction files.
