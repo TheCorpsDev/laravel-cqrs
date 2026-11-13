@@ -16,6 +16,9 @@ use TheCorps\LaravelCqrs\Console\InstallAgentRulesCommand;
 use TheCorps\LaravelCqrs\Exceptions\InvalidPipelineException;
 use TheCorps\LaravelCqrs\Contracts\Interfaces\Pipeline\PipelineBehaviorInterface;
 use Illuminate\Contracts\Events\Dispatcher;
+use TheCorps\LaravelCqrs\Console\MakeQueryCommand;
+use TheCorps\LaravelCqrs\Console\MakeCommandCommand;
+use TheCorps\LaravelCqrs\Console\ListMessagesCommand;
 use TheCorps\LaravelCqrs\Contracts\Interfaces\Bus\QueryBusInterface;
 use TheCorps\LaravelCqrs\Contracts\Interfaces\Bus\CommandBusInterface;
 
@@ -67,11 +70,18 @@ class CqrsServiceProvider extends ServiceProvider
         if ($this->app->runningInConsole()) {
             $this->commands([
                 InstallAgentRulesCommand::class,
+                MakeCommandCommand::class,
+                MakeQueryCommand::class,
+                ListMessagesCommand::class,
             ]);
 
             $this->publishes([
                 __DIR__ . '/../config/cqrs.php' => $this->app->configPath('cqrs.php'),
             ], 'cqrs-config');
+
+            $this->publishes([
+                __DIR__ . '/../stubs' => $this->app->basePath('stubs/cqrs'),
+            ], 'cqrs-stubs');
         }
     }
 

@@ -74,7 +74,6 @@ return [
         'failure_level' => 'warning',
     ],
 
-
     /*
     |--------------------------------------------------------------------------
     | Transactions
@@ -122,5 +121,21 @@ return [
     */
 
     'conventions' => true,
+
+    /*
+    |--------------------------------------------------------------------------
+    | Generators
+    |--------------------------------------------------------------------------
+    |
+    | make:cqrs-command and make:cqrs-query create classes under this
+    | namespace, relative to the application namespace (App\Domain by default).
+    | Publish the stubs with "php artisan vendor:publish --tag=cqrs-stubs"
+    | to customise the generated code.
+    |
+    */
+
+    'generators' => [
+        'namespace' => 'Domain',
+    ],
 
 ];
