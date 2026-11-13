@@ -23,12 +23,15 @@ class QueryBus implements QueryBusInterface
     /**
      * Dispatches a query through the pipeline and returns the result.
      *
-     * @param QueryInterface $query The query to dispatch.
+     * @template TResult
      *
-     * @return mixed
+     * @param QueryInterface<TResult> $query The query to dispatch.
+     *
+     * @return TResult
      */
     public function dispatch(QueryInterface $query): mixed
     {
+        /** @var TResult */
         return $this->pipeline->handle($query);
     }
 }

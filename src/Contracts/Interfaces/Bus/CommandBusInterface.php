@@ -12,9 +12,11 @@ interface CommandBusInterface
     /**
      * Dispatches a command and returns what its handler returns.
      *
-     * @param CommandInterface $command The command to dispatch.
+     * @template TResult
      *
-     * @return mixed
+     * @param CommandInterface<TResult> $command The command to dispatch.
+     *
+     * @return TResult
      */
     public function dispatch(CommandInterface $command): mixed;
 }

@@ -23,12 +23,15 @@ class CommandBus implements CommandBusInterface
     /**
      * Dispatches a command through the pipeline and returns the result.
      *
-     * @param CommandInterface $command The command to dispatch.
+     * @template TResult
      *
-     * @return mixed
+     * @param CommandInterface<TResult> $command The command to dispatch.
+     *
+     * @return TResult
      */
     public function dispatch(CommandInterface $command): mixed
     {
+        /** @var TResult */
         return $this->pipeline->handle($command);
     }
 }

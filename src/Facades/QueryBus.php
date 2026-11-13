@@ -9,7 +9,7 @@ use TheCorps\LaravelCqrs\Contracts\Interfaces\Queries\QueryInterface;
 /**
  * Facade for the CQRS query bus.
  *
- * @method static mixed dispatch(QueryInterface $query)
+ * @method static TResult dispatch<TResult>(QueryInterface<TResult> $query)
  */
 class QueryBus extends Facade
 {

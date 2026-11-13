@@ -12,9 +12,11 @@ interface QueryBusInterface
     /**
      * Dispatches a query and returns what its handler returns.
      *
-     * @param QueryInterface $query The query to dispatch.
+     * @template TResult
      *
-     * @return mixed
+     * @param QueryInterface<TResult> $query The query to dispatch.
+     *
+     * @return TResult
      */
     public function dispatch(QueryInterface $query): mixed;
 }

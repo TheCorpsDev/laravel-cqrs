@@ -9,7 +9,7 @@ use TheCorps\LaravelCqrs\Contracts\Interfaces\Commands\CommandInterface;
 /**
  * Facade for the CQRS command bus.
  *
- * @method static mixed dispatch(CommandInterface $command)
+ * @method static TResult dispatch<TResult>(CommandInterface<TResult> $command)
  */
 class CommandBus extends Facade
 {
