@@ -96,6 +96,19 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Events
+    |--------------------------------------------------------------------------
+    |
+    | When enabled, the buses fire CommandDispatching, CommandHandled and
+    | CommandFailed (and their Query counterparts) around every dispatch.
+    | Events without listeners cost almost nothing.
+    |
+    */
+
+    'events' => true,
+
+    /*
+    |--------------------------------------------------------------------------
     | Naming conventions
     |--------------------------------------------------------------------------
     |

@@ -2,6 +2,7 @@
 
 namespace TheCorps\LaravelCqrs;
 
+use Closure;
 use ReflectionClass;
 use ReflectionNamedType;
 use TheCorps\LaravelCqrs\Bus\QueryBus;
@@ -13,9 +14,10 @@ use Illuminate\Contracts\Config\Repository;
 use TheCorps\LaravelCqrs\Pipeline\MetadataResolver;
 use TheCorps\LaravelCqrs\Console\InstallAgentRulesCommand;
 use TheCorps\LaravelCqrs\Exceptions\InvalidPipelineException;
+use TheCorps\LaravelCqrs\Contracts\Interfaces\Pipeline\PipelineBehaviorInterface;
+use Illuminate\Contracts\Events\Dispatcher;
 use TheCorps\LaravelCqrs\Contracts\Interfaces\Bus\QueryBusInterface;
 use TheCorps\LaravelCqrs\Contracts\Interfaces\Bus\CommandBusInterface;
-use TheCorps\LaravelCqrs\Contracts\Interfaces\Pipeline\PipelineBehaviorInterface;
 
 /**
  * Service provider that registers the CommandBus and QueryBus with their
@@ -37,20 +39,18 @@ class CqrsServiceProvider extends ServiceProvider
 
         $this->app->singleton(
             CommandBusInterface::class,
-            fn(Container $app): CommandBus => new CommandBus($this->makePipeline(
-                $app,
-                'cqrs.command_pipeline',
-                MetadataResolver::forCommands($this->conventions($app)),
-            ))
+            fn(Container $app): CommandBus => new CommandBus(
+                $this->makePipeline($app, 'cqrs.command_pipeline', MetadataResolver::forCommands($this->conventions($app))),
+                $this->events($app),
+            )
         );
 
         $this->app->singleton(
             QueryBusInterface::class,
-            fn(Container $app): QueryBus => new QueryBus($this->makePipeline(
-                $app,
-                'cqrs.query_pipeline',
-                MetadataResolver::forQueries($this->conventions($app)),
-            ))
+            fn(Container $app): QueryBus => new QueryBus(
+                $this->makePipeline($app, 'cqrs.query_pipeline', MetadataResolver::forQueries($this->conventions($app))),
+                $this->events($app),
+            )
         );
 
         $this->app->alias(CommandBusInterface::class, CommandBus::class);
@@ -81,6 +81,26 @@ class CqrsServiceProvider extends ServiceProvider
     private function conventions(Container $app): bool
     {
         return (bool) $this->config($app)->get('cqrs.conventions', true);
+    }
+
+    /**
+     * Returns a closure resolving the event dispatcher the buses fire events on,
+     * or null when events are disabled. Resolving it on every dispatch keeps
+     * Event::fake() working even after a bus was first used.
+     *
+     * @return (Closure(): ?Dispatcher)|null
+     */
+    private function events(Container $app): ?Closure
+    {
+        if (!$this->config($app)->get('cqrs.events', true)) {
+            return null;
+        }
+
+        return static function () use ($app): ?Dispatcher {
+            $events = $app->bound('events') ? $app->make('events') : null;
+
+            return $events instanceof Dispatcher ? $events : null;
+        };
     }
 
     private function config(Container $app): Repository
