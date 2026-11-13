@@ -413,6 +413,33 @@ Avvolgere query read-only in transazioni è overhead inutile. La configurazione 
 
 ---
 
+## Integrazione con coding agent
+
+Il package fornisce le regole di cui un coding agent ha bisogno per scrivere codice CQRS coerente con la libreria: una skill `laravel-cqrs` e una breve guideline. Si installano in uno dei due modi.
+
+**Con [Laravel Boost](https://laravel.com/docs/boost)**: esegui `php artisan boost:install` (oppure `boost:update`). Boost riconosce il package e installa guideline e skill per ogni agente selezionato: Claude Code, Codex, Cursor, GitHub Copilot, Junie e altri.
+
+**Senza Boost**: esegui il comando del package.
+
+```bash
+php artisan cqrs:install-agent-rules
+```
+
+Crea o aggiorna quattro file nella root dell'applicazione:
+
+```text
+AGENTS.md                              letto da Codex, Cursor, GitHub Copilot e dalla maggior parte degli altri agenti
+CLAUDE.md                              letto da Claude Code
+.agents/skills/laravel-cqrs/SKILL.md
+.claude/skills/laravel-cqrs/SKILL.md
+```
+
+`AGENTS.md` e `CLAUDE.md` ricevono lo stesso blocco delimitato da marker, che rimanda alla skill; il contenuto fuori dai marker non viene toccato. I file collegati da symlink vengono scritti una sola volta. Riesegui il comando dopo aver aggiornato il package per aggiornare le regole. Il comando rifiuta di sovrascrivere uno `SKILL.md` non scritto dal package.
+
+Le regole guidano gli agenti, ma non sostituiscono code review o test architetturali. Consulta la [guida all'integrazione agent](docs/agent-integration.md) per i dettagli.
+
+---
+
 ## Sviluppo
 
 ```bash

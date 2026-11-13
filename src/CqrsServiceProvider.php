@@ -10,6 +10,7 @@ use TheCorps\LaravelCqrs\Bus\CommandBus;
 use TheCorps\LaravelCqrs\Pipeline\Pipeline;
 use Illuminate\Contracts\Container\Container;
 use TheCorps\LaravelCqrs\Pipeline\MetadataResolver;
+use TheCorps\LaravelCqrs\Console\InstallAgentRulesCommand;
 use TheCorps\LaravelCqrs\Exceptions\InvalidPipelineException;
 use TheCorps\LaravelCqrs\Contracts\Interfaces\Pipeline\PipelineBehaviorInterface;
 use TheCorps\LaravelCqrs\Contracts\Attributes\Queries\QueryHandler as QueryHandlerAttr;
@@ -62,6 +63,10 @@ class CqrsServiceProvider extends ServiceProvider
     public function boot(): void
     {
         if ($this->app->runningInConsole()) {
+            $this->commands([
+                InstallAgentRulesCommand::class,
+            ]);
+
             $this->publishes([
                 __DIR__ . '/../config/cqrs.php' => $this->app->configPath('cqrs.php'),
             ], 'cqrs-config');
