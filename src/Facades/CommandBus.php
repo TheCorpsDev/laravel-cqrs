@@ -3,6 +3,7 @@
 namespace TheCorps\LaravelCqrs\Facades;
 
 use Illuminate\Support\Facades\Facade;
+use TheCorps\LaravelCqrs\Contracts\Interfaces\Bus\CommandBusInterface;
 use TheCorps\LaravelCqrs\Contracts\Interfaces\Commands\CommandInterface;
 
 /**
@@ -19,6 +20,6 @@ class CommandBus extends Facade
      */
     protected static function getFacadeAccessor(): string
     {
-        return \TheCorps\LaravelCqrs\Bus\CommandBus::class;
+        return CommandBusInterface::class;
     }
 }

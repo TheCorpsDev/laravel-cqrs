@@ -3,6 +3,7 @@
 namespace TheCorps\LaravelCqrs\Facades;
 
 use Illuminate\Support\Facades\Facade;
+use TheCorps\LaravelCqrs\Contracts\Interfaces\Bus\QueryBusInterface;
 use TheCorps\LaravelCqrs\Contracts\Interfaces\Queries\QueryInterface;
 
 /**
@@ -19,6 +20,6 @@ class QueryBus extends Facade
      */
     protected static function getFacadeAccessor(): string
     {
-        return \TheCorps\LaravelCqrs\Bus\QueryBus::class;
+        return QueryBusInterface::class;
     }
 }

@@ -3,12 +3,13 @@
 namespace TheCorps\LaravelCqrs\Bus;
 
 use TheCorps\LaravelCqrs\Pipeline\Pipeline;
+use TheCorps\LaravelCqrs\Contracts\Interfaces\Bus\CommandBusInterface;
 use TheCorps\LaravelCqrs\Contracts\Interfaces\Commands\CommandInterface;
 
 /**
  * CQRS command bus: routes commands through the configured pipeline.
  */
-class CommandBus
+class CommandBus implements CommandBusInterface
 {
     /**
      * Creates a new command bus instance.

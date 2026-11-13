@@ -13,6 +13,8 @@ use Illuminate\Contracts\Config\Repository;
 use TheCorps\LaravelCqrs\Pipeline\MetadataResolver;
 use TheCorps\LaravelCqrs\Console\InstallAgentRulesCommand;
 use TheCorps\LaravelCqrs\Exceptions\InvalidPipelineException;
+use TheCorps\LaravelCqrs\Contracts\Interfaces\Bus\QueryBusInterface;
+use TheCorps\LaravelCqrs\Contracts\Interfaces\Bus\CommandBusInterface;
 use TheCorps\LaravelCqrs\Contracts\Interfaces\Pipeline\PipelineBehaviorInterface;
 
 /**
@@ -34,7 +36,7 @@ class CqrsServiceProvider extends ServiceProvider
         $this->mergeConfigFrom(__DIR__ . '/../config/cqrs.php', 'cqrs');
 
         $this->app->singleton(
-            CommandBus::class,
+            CommandBusInterface::class,
             fn(Container $app): CommandBus => new CommandBus($this->makePipeline(
                 $app,
                 'cqrs.command_pipeline',
@@ -43,13 +45,16 @@ class CqrsServiceProvider extends ServiceProvider
         );
 
         $this->app->singleton(
-            QueryBus::class,
+            QueryBusInterface::class,
             fn(Container $app): QueryBus => new QueryBus($this->makePipeline(
                 $app,
                 'cqrs.query_pipeline',
                 MetadataResolver::forQueries($this->conventions($app)),
             ))
         );
+
+        $this->app->alias(CommandBusInterface::class, CommandBus::class);
+        $this->app->alias(QueryBusInterface::class, QueryBus::class);
     }
 
     /**

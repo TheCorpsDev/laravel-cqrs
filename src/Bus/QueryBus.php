@@ -3,12 +3,13 @@
 namespace TheCorps\LaravelCqrs\Bus;
 
 use TheCorps\LaravelCqrs\Pipeline\Pipeline;
+use TheCorps\LaravelCqrs\Contracts\Interfaces\Bus\QueryBusInterface;
 use TheCorps\LaravelCqrs\Contracts\Interfaces\Queries\QueryInterface;
 
 /**
  * CQRS query bus: routes queries through the configured pipeline.
  */
-class QueryBus
+class QueryBus implements QueryBusInterface
 {
     /**
      * Creates a new query bus instance.
