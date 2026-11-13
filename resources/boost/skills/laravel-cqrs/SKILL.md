@@ -19,7 +19,14 @@ Use this skill whenever the project depends on `thecorps/laravel-cqrs` and the t
 
 Follow the structure the project already uses for CQRS classes. Look for existing classes implementing `CommandInterface` or `QueryInterface` before creating new folders.
 
-When the project has no established structure yet, use one folder per use case inside its feature:
+When the project has no established structure yet, generate the files with Artisan instead of writing them by hand:
+
+```bash
+php artisan make:cqrs-command Billing/CreateInvoice --validator
+php artisan make:cqrs-query Billing/GetInvoice
+```
+
+They create one folder per use case inside its feature:
 
 ```text
 app/Domain/{Feature}/
@@ -42,6 +49,7 @@ use TheCorps\LaravelCqrs\Contracts\Attributes\Commands\CommandHandler;
 use TheCorps\LaravelCqrs\Contracts\Attributes\Commands\CommandValidator;
 use TheCorps\LaravelCqrs\Contracts\Interfaces\Commands\CommandInterface;
 
+/** @implements CommandInterface<int> */
 #[CommandHandler(CreateInvoiceHandler::class)]
 #[CommandValidator(CreateInvoiceValidator::class)] // only when needed
 final class CreateInvoiceCommand implements CommandInterface
@@ -54,7 +62,9 @@ final class CreateInvoiceCommand implements CommandInterface
 ```
 
 - Queries use `QueryInterface`, `#[QueryHandler(...)]` and `#[QueryValidator(...)]` from the `Queries` namespaces.
+- Declare the handler's return type with `@implements CommandInterface<T>` / `@implements QueryInterface<T>` so `dispatch()` is typed at every call site.
 - Attributes are inherited: a class extending a base command uses the base handler unless it declares its own.
+- Without a handler attribute, the handler is found by name in the same namespace (`CreateInvoiceCommand` → `CreateInvoiceCommandHandler` or `CreateInvoiceHandler`, which must implement the handler interface), and so is the validator. Follow the project: if its messages declare attributes, declare them too.
 
 ## Handlers and validators
 
@@ -66,9 +76,11 @@ final class CreateInvoiceCommand implements CommandInterface
 
 ## Dispatching
 
-- Dispatch commands only with `CommandBus::dispatch(...)` and queries only with `QueryBus::dispatch(...)` (facades in `TheCorps\LaravelCqrs\Facades`, or inject `TheCorps\LaravelCqrs\Bus\CommandBus` / `QueryBus`). Never call a handler directly.
+- Dispatch commands only with `CommandBus::dispatch(...)` and queries only with `QueryBus::dispatch(...)`: the facades in `TheCorps\LaravelCqrs\Facades`, or inject `CommandBusInterface` / `QueryBusInterface` from `TheCorps\LaravelCqrs\Contracts\Interfaces\Bus`. Never call a handler directly.
 - `dispatch()` returns whatever the handler returns.
 - Every command runs inside `DB::transaction()` by default; an exception in the handler rolls back all its writes.
+- Add `#[WithoutTransaction]` to a command that does no database work or manages its own transactions, and `#[Transactional(connection: '...', attempts: 3)]` to choose the connection or retry on deadlock (namespace `TheCorps\LaravelCqrs\Contracts\Attributes\Transactions`).
+- For cross-cutting reactions (metrics, auditing), listen to `CommandHandled` / `CommandFailed` / `QueryHandled` / `QueryFailed` from `TheCorps\LaravelCqrs\Events` instead of adding code to handlers.
 
 ## Pipeline
 
@@ -81,15 +93,23 @@ final class CreateInvoiceCommand implements CommandInterface
 
 All extend `TheCorps\LaravelCqrs\Exceptions\CqrsException`:
 
-- `MissingHandlerException`: the class has no `#[CommandHandler]` / `#[QueryHandler]`.
+- `MissingHandlerException`: the class has no `#[CommandHandler]` / `#[QueryHandler]` and no handler is found by naming convention.
 - `InvalidHandlerException` / `InvalidValidatorException`: the declared class does not exist or lacks `handle()` / `validate()`.
 - `InvalidPipelineException`: a pipeline entry is not a behavior, or nothing handled the message.
 
 ## Testing
 
-- Test a handler through the bus so the real pipeline (validation, transaction) runs.
-- To assert that code dispatches a command without running it, use the facade's Mockery helpers: `CommandBus::spy()` then `CommandBus::shouldHaveReceived('dispatch')`, or `CommandBus::shouldReceive('dispatch')->andReturn(...)`.
+- Test a handler through the real bus so the pipeline (validation, transaction) runs.
+- To test code that dispatches, fake the bus and assert on what was dispatched:
+
+```php
+CommandBus::fake([CreateInvoiceCommand::class => 42]); // optional responses per class
+// ... exercise the code ...
+CommandBus::assertDispatched(fn (CreateInvoiceCommand $command) => $command->customerId === 7);
+CommandBus::assertNotDispatched(VoidInvoiceCommand::class);
+QueryBus::fake()->respondWith(GetInvoiceQuery::class, $invoice);
+```
 
 ## Completion check
 
-Before finishing, verify: correct classification (command vs query), file location, interface and attribute on the DTO, handler interface and `handle()` signature, dispatch through the bus, domain validation kept out of `FormRequest` and vice versa, no writes in query handlers, pipeline invariants untouched.
+Before finishing, verify: correct classification (command vs query), file location, interface, result type and attribute on the DTO, handler interface and `handle()` signature, dispatch through the bus, domain validation kept out of `FormRequest` and vice versa, no writes in query handlers, pipeline invariants untouched. Run `php artisan cqrs:list` to confirm every command and query resolves to its handler.
