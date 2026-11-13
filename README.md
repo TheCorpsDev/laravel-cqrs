@@ -64,7 +64,7 @@ Queries follow the same pattern but skip `LoggingBehavior` and `TransactionBehav
 
 ### 1 — Command
 
-A command is an immutable DTO that implements `CommandInterface` and declares its handler via the `#[CommandHandler]` attribute.
+A command is an immutable DTO that implements `CommandInterface` and declares its handler via the `#[CommandHandler]` attribute. Attributes are also inherited: a command extending a base class that declares `#[CommandHandler]` uses that handler unless it declares its own.
 
 ```php
 use TheCorps\LaravelCqrs\Contracts\Interfaces\Commands\CommandInterface;
@@ -171,11 +171,15 @@ class CreateUserCommandValidator implements ValidatesCommandInterface
 }
 ```
 
+In the default command pipeline the validator runs **before** `TransactionBehavior`: a failed validation stops the command without opening a database transaction.
+
+> **Note:** a check like the one above is not atomic. Two concurrent requests can both pass it before either one inserts, even inside a transaction. Keep a unique index on the column as the real guarantee and use the validator for a friendly error message.
+
 ---
 
 ### 6 — Transactions
 
-`TransactionBehavior` is included in the default command pipeline. You do not need to do anything: every command is automatically wrapped in a `DB::transaction()`. If any exception is thrown — whether from the validator, the handler, or any downstream behavior — the entire transaction is rolled back.
+`TransactionBehavior` is included in the default command pipeline. You do not need to do anything: every command is automatically wrapped in a `DB::transaction()`. If the handler, or any behavior placed after `TransactionBehavior`, throws an exception, the entire transaction is rolled back. Behaviors placed before it, such as `ValidationBehavior` in the default order, run outside the transaction.
 
 ```php
 class TransferFundsCommandHandler implements CommandHandlerInterface
@@ -207,20 +211,24 @@ To disable automatic transactions, remove `TransactionBehavior` from `command_pi
 
 ### 7 — Logging
 
-`LoggingBehavior` is included in the default command pipeline. It writes two log entries for every command dispatched: one at dispatch time and one on completion.
+`LoggingBehavior` is included in the default command pipeline. It writes one entry when a command is dispatched and one when it completes, or a `failed` entry if an exception is thrown. The exception is then re-thrown untouched, so Laravel's exception handler still reports it.
 
 ```
 [CQRS] CreateUserCommand dispatched
 [CQRS] CreateUserCommand completed
+[CQRS] CreateUserCommand failed
 ```
 
-By default it uses the application's default log channel at `debug` level. Both settings are configurable:
+Every entry carries the fully qualified class name in its context (`class`). The `completed` and `failed` entries also carry `duration_ms`, and the `failed` entry carries the exception class (`exception`) and message (`error`).
+
+By default it uses the application's default log channel, at `debug` level for dispatch and completion and at `warning` level for failures. All three settings are configurable:
 
 ```php
 // config/cqrs.php
 'logging' => [
-    'channel' => 'daily',   // write to a named Laravel log channel
-    'level'   => 'info',    // any PSR-3 level: debug, info, notice, warning, error
+    'channel'       => 'daily',  // write to a named Laravel log channel
+    'level'         => 'info',   // level of the "dispatched" and "completed" entries
+    'failure_level' => 'error',  // level of the "failed" entry
 ],
 ```
 
@@ -259,9 +267,11 @@ After publishing, `config/cqrs.php` exposes three configuration areas.
 
 You can add, remove, or reorder behaviors freely. The order in the array is the execution order.
 
+If a command or query reaches the end of the pipeline without being handled, for example because `HandlerExecutionBehavior` was removed, the bus throws an `InvalidPipelineException` instead of silently returning `null`.
+
 ### Custom behaviors
 
-Any class implementing `PipelineBehaviorInterface` can be inserted into the pipeline. Custom behaviors are resolved from the Laravel container, so they support constructor injection.
+Any class implementing `PipelineBehaviorInterface` can be inserted into the pipeline. Behaviors are resolved from the Laravel container the first time a bus is used, so they support constructor injection and may depend on bindings registered by any of your service providers.
 
 ```php
 use Closure;
@@ -290,14 +300,46 @@ class RateLimitingBehavior implements PipelineBehaviorInterface
 ],
 ```
 
+A behavior whose constructor asks for a `MetadataResolver` receives the resolver of its own pipeline, so it can read the handler or validator of the message it is processing. This also means the built-in behaviors can be extended:
+
+```php
+use Closure;
+use TheCorps\LaravelCqrs\Pipeline\Behaviors\ValidationBehavior;
+
+class AuditedValidationBehavior extends ValidationBehavior
+{
+    public function handle(object $command, Closure $next): mixed
+    {
+        // your extra logic here
+        return parent::handle($command, $next);
+    }
+}
+```
+
+The pipeline is built once per bus instance and reused. Changes to `cqrs.command_pipeline` or `cqrs.query_pipeline` made at runtime apply only before the bus is first resolved.
+
 ### Logging
 
 ```php
 'logging' => [
-    'channel' => null,     // null = default Laravel log channel; or 'daily', 'slack', etc.
-    'level'   => 'debug',  // any PSR-3 level: debug, info, notice, warning, error
+    'channel'       => null,       // null = default Laravel log channel; or 'daily', 'slack', etc.
+    'level'         => 'debug',    // PSR-3 level of the "dispatched" and "completed" entries
+    'failure_level' => 'warning',  // PSR-3 level of the "failed" entry
 ],
 ```
+
+---
+
+## Errors
+
+Misconfigurations fail with a dedicated exception that names the class involved. All of them extend `TheCorps\LaravelCqrs\Exceptions\CqrsException`, which extends `RuntimeException`.
+
+| Exception | Thrown when |
+| --- | --- |
+| `MissingHandlerException` | the command or query, and its parent classes, declare no `#[CommandHandler]` / `#[QueryHandler]` |
+| `InvalidHandlerException` | the declared handler class does not exist or has no `handle()` method |
+| `InvalidValidatorException` | the declared validator class does not exist or has no `validate()` method |
+| `InvalidPipelineException` | a pipeline entry is not a `PipelineBehaviorInterface` class, the pipeline config is not a list, or a message reaches the end of the pipeline unhandled |
 
 ---
 
@@ -324,9 +366,10 @@ src/
 │       │   └── ValidatesQueryInterface.php    ← implement on every QueryValidator
 │       └── Pipeline/
 │           └── PipelineBehaviorInterface.php  ← implement for custom behaviors
+├── Exceptions/                           ← CqrsException and its subclasses
 ├── Pipeline/
 │   ├── Behaviors/
-│   │   ├── LoggingBehavior.php           ← logs dispatch and completion
+│   │   ├── LoggingBehavior.php           ← logs dispatch, completion and failure
 │   │   ├── ValidationBehavior.php        ← runs the validator if declared
 │   │   ├── TransactionBehavior.php       ← wraps in DB::transaction()
 │   │   └── HandlerExecutionBehavior.php  ← resolves and calls the handler
@@ -363,10 +406,22 @@ Keep business logic in models, domain services, or value objects. The handler's 
 If you find yourself calling `save()` inside a query handler, move that logic to a command.
 
 **`HandlerExecutionBehavior` must always be last.**
-Any behavior placed after it will never execute.
+Any behavior placed after it will never execute, and a pipeline without it throws an `InvalidPipelineException`.
 
 **Do not add `TransactionBehavior` to the query pipeline.**
 Wrapping read-only queries in transactions is unnecessary overhead. The default configuration already reflects this.
+
+---
+
+## Development
+
+```bash
+composer install
+composer test      # PHPUnit
+composer analyse   # PHPStan, level max
+```
+
+The test suite runs on GitHub Actions against every supported combination of PHP and Laravel.
 
 ---
 

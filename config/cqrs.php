@@ -17,10 +17,16 @@ return [
     | including your own custom classes that implement PipelineBehaviorInterface.
     |
     | Built-in behaviors:
-    |   - LoggingBehavior — logs dispatch and completion (debug)
+    |   - LoggingBehavior — logs dispatch, completion and failure
     |   - ValidationBehavior — runs the CommandValidator if present
     |   - TransactionBehavior — wraps execution in a DB transaction
     |   - HandlerExecutionBehavior — resolves and calls the CommandHandler
+    |
+    | HandlerExecutionBehavior must be the last entry: a command that reaches
+    | the end of the pipeline without being handled throws an exception.
+    |
+    | Behaviors are resolved from the container the first time the bus is
+    | used, so they may depend on anything your service providers register.
     |
     */
 
@@ -55,13 +61,17 @@ return [
     | Controls how the LoggingBehavior writes messages.
     |
     |   channel — the Laravel log channel to use (null = default channel)
-    |   level — PSR-3 log level: debug, info, notice, warning, error
+    |   level — PSR-3 level for the "dispatched" and "completed" entries
+    |   failure_level — PSR-3 level for the "failed" entry
+    |
+    | PSR-3 levels: debug, info, notice, warning, error, critical, alert, emergency
     |
     */
 
     'logging' => [
         'channel' => null,
         'level' => 'debug',
+        'failure_level' => 'warning',
     ],
 
 ];
