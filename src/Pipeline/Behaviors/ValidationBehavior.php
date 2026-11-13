@@ -4,6 +4,7 @@ namespace TheCorps\LaravelCqrs\Pipeline\Behaviors;
 
 use Closure;
 use TheCorps\LaravelCqrs\Pipeline\MetadataResolver;
+use TheCorps\LaravelCqrs\Exceptions\InvalidValidatorException;
 use TheCorps\LaravelCqrs\Contracts\Interfaces\Pipeline\PipelineBehaviorInterface;
 
 /**
@@ -11,6 +12,9 @@ use TheCorps\LaravelCqrs\Contracts\Interfaces\Pipeline\PipelineBehaviorInterface
  *
  * If no validator is bound to the command/query (i.e. no #[CommandValidator] attribute),
  * this behavior is a no-op and passes control to the next step immediately.
+ *
+ * In the default command pipeline this behavior runs before TransactionBehavior, so a
+ * failed validation never opens a database transaction.
  */
 class ValidationBehavior implements PipelineBehaviorInterface
 {
@@ -36,7 +40,13 @@ class ValidationBehavior implements PipelineBehaviorInterface
         $validatorClass = $this->resolver->getValidatorClass($command);
 
         if ($validatorClass !== null) {
-            app($validatorClass)->validate($command);
+            $validator = app($validatorClass);
+
+            if (!is_object($validator) || !method_exists($validator, 'validate')) {
+                throw InvalidValidatorException::missingMethod($command, $validatorClass);
+            }
+
+            $validator->validate($command);
         }
 
         return $next($command);
