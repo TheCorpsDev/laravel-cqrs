@@ -2,16 +2,16 @@
 
 namespace TheCorps\LaravelCqrs;
 
+use ReflectionClass;
+use ReflectionNamedType;
 use TheCorps\LaravelCqrs\Bus\QueryBus;
 use Illuminate\Support\ServiceProvider;
 use TheCorps\LaravelCqrs\Bus\CommandBus;
 use TheCorps\LaravelCqrs\Pipeline\Pipeline;
+use Illuminate\Contracts\Container\Container;
 use TheCorps\LaravelCqrs\Pipeline\MetadataResolver;
 use TheCorps\LaravelCqrs\Console\InstallAgentRulesCommand;
-use TheCorps\LaravelCqrs\Pipeline\Behaviors\LoggingBehavior;
-use TheCorps\LaravelCqrs\Pipeline\Behaviors\ValidationBehavior;
-use TheCorps\LaravelCqrs\Pipeline\Behaviors\TransactionBehavior;
-use TheCorps\LaravelCqrs\Pipeline\Behaviors\HandlerExecutionBehavior;
+use TheCorps\LaravelCqrs\Exceptions\InvalidPipelineException;
 use TheCorps\LaravelCqrs\Contracts\Interfaces\Pipeline\PipelineBehaviorInterface;
 use TheCorps\LaravelCqrs\Contracts\Attributes\Queries\QueryHandler as QueryHandlerAttr;
 use TheCorps\LaravelCqrs\Contracts\Attributes\Queries\QueryValidator as QueryValidatorAttr;
@@ -21,6 +21,9 @@ use TheCorps\LaravelCqrs\Contracts\Attributes\Commands\CommandValidator as Comma
 /**
  * Service provider that registers the CommandBus and QueryBus with their
  * respective pipelines in the application container.
+ *
+ * Pipelines are built lazily, the first time a bus is resolved, so that
+ * behaviors can depend on bindings registered by any other service provider.
  */
 class CqrsServiceProvider extends ServiceProvider
 {
@@ -33,8 +36,23 @@ class CqrsServiceProvider extends ServiceProvider
     {
         $this->mergeConfigFrom(__DIR__ . '/../config/cqrs.php', 'cqrs');
 
-        $this->registerCommandBus();
-        $this->registerQueryBus();
+        $this->app->singleton(
+            CommandBus::class,
+            fn(Container $app): CommandBus => new CommandBus($this->makePipeline(
+                $app,
+                'cqrs.command_pipeline',
+                new MetadataResolver(CommandHandlerAttr::class, CommandValidatorAttr::class),
+            ))
+        );
+
+        $this->app->singleton(
+            QueryBus::class,
+            fn(Container $app): QueryBus => new QueryBus($this->makePipeline(
+                $app,
+                'cqrs.query_pipeline',
+                new MetadataResolver(QueryHandlerAttr::class, QueryValidatorAttr::class),
+            ))
+        );
     }
 
     /**
@@ -50,80 +68,76 @@ class CqrsServiceProvider extends ServiceProvider
             ]);
 
             $this->publishes([
-                __DIR__ . '/../config/cqrs.php' => config_path('cqrs.php'),
+                __DIR__ . '/../config/cqrs.php' => $this->app->configPath('cqrs.php'),
             ], 'cqrs-config');
         }
     }
 
     /**
-     * Configures and registers the CommandBus as a singleton in the container.
+     * Builds a pipeline from the behavior classes listed under the given config key.
      *
-     * @return void
+     * Every behavior is resolved from the container. A behavior whose constructor
+     * asks for a MetadataResolver receives the resolver of this pipeline, so the
+     * built-in behaviors and their subclasses work for both commands and queries.
+     *
+     * @param Container        $app       The application container.
+     * @param string           $configKey The config key holding the behavior list.
+     * @param MetadataResolver $resolver  The resolver of this pipeline.
+     *
+     * @return Pipeline
+     *
+     * @throws InvalidPipelineException When the configuration is not a valid list of behaviors.
      */
-    private function registerCommandBus(): void
+    private function makePipeline(Container $app, string $configKey, MetadataResolver $resolver): Pipeline
     {
-        $resolver = new MetadataResolver(
-            CommandHandlerAttr::class,
-            CommandValidatorAttr::class
-        );
+        /** @var \Illuminate\Contracts\Config\Repository $config */
+        $config = $app->make('config');
+        $classes = $config->get($configKey);
 
-        $behaviors = array_map(
-            fn(string $class): PipelineBehaviorInterface => $this->makeBehavior($class, $resolver),
-            config('cqrs.command_pipeline', [
-                LoggingBehavior::class,
-                ValidationBehavior::class,
-                TransactionBehavior::class,
-                HandlerExecutionBehavior::class,
-            ])
-        );
+        if (!is_array($classes) || !array_is_list($classes)) {
+            throw InvalidPipelineException::notAList($configKey);
+        }
 
-        $this->app->singleton(
-            CommandBus::class,
-            fn() => new CommandBus(new Pipeline($behaviors))
-        );
+        $behaviors = [];
+
+        foreach ($classes as $class) {
+            if (!is_string($class) || !class_exists($class)) {
+                throw InvalidPipelineException::invalidBehavior($configKey, $class);
+            }
+
+            $behavior = $app->make($class, $this->resolverParameter($class, $resolver));
+
+            if (!$behavior instanceof PipelineBehaviorInterface) {
+                throw InvalidPipelineException::invalidBehavior($configKey, $class);
+            }
+
+            $behaviors[] = $behavior;
+        }
+
+        return new Pipeline($behaviors);
     }
 
     /**
-     * Configures and registers the QueryBus as a singleton in the container.
+     * Returns the container parameter override that injects the pipeline's
+     * MetadataResolver into the behavior constructor, if it asks for one.
      *
-     * @return void
+     * @param class-string     $class    The behavior class.
+     * @param MetadataResolver $resolver The resolver of the pipeline.
+     *
+     * @return array<string, MetadataResolver>
      */
-    private function registerQueryBus(): void
+    private function resolverParameter(string $class, MetadataResolver $resolver): array
     {
-        $resolver = new MetadataResolver(
-            QueryHandlerAttr::class,
-            QueryValidatorAttr::class
-        );
+        $constructor = (new ReflectionClass($class))->getConstructor();
 
-        $behaviors = array_map(
-            fn(string $class): PipelineBehaviorInterface => $this->makeBehavior($class, $resolver),
-            config('cqrs.query_pipeline', [
-                ValidationBehavior::class,
-                HandlerExecutionBehavior::class,
-            ])
-        );
+        foreach ($constructor?->getParameters() ?? [] as $parameter) {
+            $type = $parameter->getType();
 
-        $this->app->singleton(
-            QueryBus::class,
-            fn() => new QueryBus(new Pipeline($behaviors))
-        );
-    }
+            if ($type instanceof ReflectionNamedType && is_a($type->getName(), MetadataResolver::class, true)) {
+                return [$parameter->getName() => $resolver];
+            }
+        }
 
-    /**
-     * Instantiates a pipeline behavior, injecting the MetadataResolver for
-     * built-in behaviors that require it, or resolving custom ones from the container.
-     *
-     * @param string           $class    Fully qualified behavior class name.
-     * @param MetadataResolver $resolver The resolver to inject into built-in behaviors.
-     *
-     * @return PipelineBehaviorInterface
-     */
-    private function makeBehavior(string $class, MetadataResolver $resolver): PipelineBehaviorInterface
-    {
-        return match ($class) {
-            ValidationBehavior::class => new ValidationBehavior($resolver),
-            HandlerExecutionBehavior::class => new HandlerExecutionBehavior($resolver),
-            default => app($class),
-        };
+        return [];
     }
 }
