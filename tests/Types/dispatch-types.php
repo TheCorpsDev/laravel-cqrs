@@ -1,7 +1,7 @@
 <?php
 
 // Analysed by PHPStan only (see phpstan.neon.dist): checks the types inferred
-// for dispatch() through the buses, their interfaces, and the facades.
+// for dispatch() through the buses, their interfaces, the facades and the fakes.
 
 namespace TheCorps\LaravelCqrs\Tests\Types;
 
@@ -9,6 +9,7 @@ use function PHPStan\Testing\assertType;
 
 use TheCorps\LaravelCqrs\Bus\QueryBus;
 use TheCorps\LaravelCqrs\Bus\CommandBus;
+use TheCorps\LaravelCqrs\Testing\QueryBusFake;
 use TheCorps\LaravelCqrs\Facades\QueryBus as QueryBusFacade;
 use TheCorps\LaravelCqrs\Facades\CommandBus as CommandBusFacade;
 use TheCorps\LaravelCqrs\Contracts\Interfaces\Bus\QueryBusInterface;
@@ -32,6 +33,7 @@ function types(
     CommandBusInterface $commandBusInterface,
     QueryBus $queryBus,
     QueryBusInterface $queryBusInterface,
+    QueryBusFake $queryBusFake,
 ): void {
     assertType('int', $commandBus->dispatch(new CreateInvoice()));
     assertType('int', $commandBusInterface->dispatch(new CreateInvoice()));
@@ -41,4 +43,5 @@ function types(
     assertType('TheCorps\LaravelCqrs\Tests\Types\Invoice|null', $queryBus->dispatch(new FindInvoice()));
     assertType('TheCorps\LaravelCqrs\Tests\Types\Invoice|null', $queryBusInterface->dispatch(new FindInvoice()));
     assertType('TheCorps\LaravelCqrs\Tests\Types\Invoice|null', QueryBusFacade::dispatch(new FindInvoice()));
+    assertType('TheCorps\LaravelCqrs\Tests\Types\Invoice|null', $queryBusFake->dispatch(new FindInvoice()));
 }
