@@ -4,6 +4,24 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 and the project follows [Semantic Versioning](https://semver.org/).
 
+## [1.3.0] - Unreleased
+
+### Added
+
+- `CommandBusInterface` and `QueryBusInterface`. Both resolve to the same singletons as the concrete buses and the facades, which now use the interfaces as their container keys.
+- Typed results: `CommandInterface` and `QueryInterface` take a `TResult` template (default `mixed`), and `dispatch()` returns it through the buses, the interfaces, the facades and the fakes. Existing classes without the annotation raise no new static-analysis errors.
+- `CommandBus::fake()` and `QueryBus::fake()` with `assertDispatched()`, `assertDispatchedTimes()`, `assertNotDispatched()`, `assertNothingDispatched()`, `dispatched()`, `hasDispatched()` and per-class responses (`fake([Class::class => $value])`, `respondWith()`).
+- `#[WithoutTransaction]` and `#[Transactional(connection, attempts)]` to skip or configure the transaction of a single command, plus the `cqrs.transactions` defaults.
+- `CommandDispatching`, `CommandHandled`, `CommandFailed`, `QueryDispatching`, `QueryHandled` and `QueryFailed` events, with the result or exception and the duration. Events without listeners are not instantiated; disable them with `cqrs.events`.
+- Handler and validator resolution by naming convention for messages without a handler attribute (`CreateUserCommand` → `CreateUserCommandHandler` or `CreateUserHandler`). Only classes implementing the matching interface are used. Disable with `cqrs.conventions`.
+- `make:cqrs-command`, `make:cqrs-query` (with publishable stubs, `--tag=cqrs-stubs`) and `cqrs:list`, which lists every command and query with its handler and fails when one does not resolve.
+- `MetadataResolver::forCommands()` and `MetadataResolver::forQueries()`.
+
+### Changed
+
+- `TransactionBehavior` opens the transaction through the database manager on the configured connection instead of the `DB` facade's default connection; with the default configuration the behavior is the same.
+- The agent skill and the Boost guideline cover the new features.
+
 ## [1.2.0] - Unreleased
 
 ### Added
@@ -39,6 +57,7 @@ and the project follows [Semantic Versioning](https://semver.org/).
 
 - Initial release.
 
+[1.3.0]: https://github.com/TheCorpsDev/laravel-cqrs/compare/v1.2.0...v1.3.0
 [1.2.0]: https://github.com/TheCorpsDev/laravel-cqrs/compare/v1.1.0...v1.2.0
 [1.1.0]: https://github.com/TheCorpsDev/laravel-cqrs/compare/v1.0.0...v1.1.0
 [1.0.0]: https://github.com/TheCorpsDev/laravel-cqrs/releases/tag/v1.0.0

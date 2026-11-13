@@ -108,6 +108,24 @@ $user = CommandBus::dispatch(new CreateUserCommand(
 ));
 ```
 
+Le facade sono facoltative. Per iniettare il bus, indica come tipo `CommandBusInterface` (o `QueryBusInterface`): il container lo risolve nello stesso singleton usato dalla facade, e `CommandBus::fake()` sostituisce entrambi.
+
+```php
+use TheCorps\LaravelCqrs\Contracts\Interfaces\Bus\CommandBusInterface;
+
+final class RegistrationController
+{
+    public function __construct(private readonly CommandBusInterface $commands) {}
+
+    public function store(RegisterRequest $request): RedirectResponse
+    {
+        $this->commands->dispatch(new CreateUserCommand(...));
+
+        return redirect('/');
+    }
+}
+```
+
 ---
 
 ### 4 — Query
@@ -205,6 +223,23 @@ Per disabilitare le transazioni automatiche, rimuovi `TransactionBehavior` dalla
 ],
 ```
 
+Per cambiare la transazione di un singolo command, usa un attributo sul command:
+
+```php
+use TheCorps\LaravelCqrs\Contracts\Attributes\Transactions\Transactional;
+use TheCorps\LaravelCqrs\Contracts\Attributes\Transactions\WithoutTransaction;
+
+#[CommandHandler(SendNewsletterHandler::class)]
+#[WithoutTransaction]                       // nessun lavoro sul database, oppure l'handler gestisce le proprie transazioni
+final class SendNewsletterCommand implements CommandInterface { ... }
+
+#[CommandHandler(SettleLedgerHandler::class)]
+#[Transactional(connection: 'ledger', attempts: 3)]   // altra connessione, fino a 3 tentativi in caso di deadlock
+final class SettleLedgerCommand implements CommandInterface { ... }
+```
+
+Le opzioni non indicate usano `cqrs.transactions` (`connection` è la connessione di default, `attempts` vale `1`). Entrambi gli attributi vengono ereditati dalle sottoclassi.
+
 > **Nota:** Non aggiungere mai `TransactionBehavior` alla query pipeline. Le query read-only non necessitano di transazioni.
 
 ---
@@ -245,9 +280,118 @@ Per disabilitare il logging completamente, rimuovi `LoggingBehavior` dalla `comm
 
 ---
 
+### 8 — Risultati tipizzati
+
+`dispatch()` restituisce ciò che restituisce l'handler. Dichiara quel tipo sul command o sulla query e PHPStan, Psalm e gli IDE lo deducono a ogni chiamata, tramite facade, interfaccia del bus o fake:
+
+```php
+/** @implements QueryInterface<User|null> */
+#[QueryHandler(GetUserQueryHandler::class)]
+final class GetUserQuery implements QueryInterface { ... }
+
+$user = QueryBus::dispatch(new GetUserQuery(userId: $id)); // User|null
+```
+
+Il parametro di tipo vale `mixed` di default, quindi command e query senza annotazione continuano a funzionare e non generano nuovi errori di analisi statica.
+
+---
+
+### 9 — Convenzioni sui nomi
+
+Un command o una query senza attributo handler viene gestito dalla classe che porta il suo nome nello stesso namespace:
+
+| Messaggio | Handler | Validator |
+| --- | --- | --- |
+| `CreateUserCommand` | `CreateUserCommandHandler` o `CreateUserHandler` | `CreateUserCommandValidator` o `CreateUserValidator` |
+| `GetUserQuery` | `GetUserQueryHandler` o `GetUserHandler` | `GetUserQueryValidator` o `GetUserValidator` |
+
+Una classe trovata così viene usata solo se implementa l'interfaccia corrispondente (`CommandHandlerInterface`, `ValidatesCommandInterface` e gli equivalenti per le query). Gli attributi hanno sempre la precedenza, e i validator vengono cercati per nome solo per i messaggi che non dichiarano un attributo handler: i command esistenti non iniziano mai a eseguire un validator non dichiarato. Imposta `'conventions' => false` in `config/cqrs.php` per rendere gli attributi obbligatori.
+
+---
+
+### 10 — Eventi
+
+Entrambi i bus lanciano eventi Laravel attorno a ogni dispatch:
+
+| Command | Query | Proprietà |
+| --- | --- | --- |
+| `CommandDispatching` | `QueryDispatching` | `message` |
+| `CommandHandled` | `QueryHandled` | `message`, `result`, `durationMs` |
+| `CommandFailed` | `QueryFailed` | `message`, `exception`, `durationMs` |
+
+Si trovano in `TheCorps\LaravelCqrs\Events` e sono il punto giusto per metriche, audit o recorder di Telescope/Pulse:
+
+```php
+use Illuminate\Support\Facades\Event;
+use TheCorps\LaravelCqrs\Events\CommandHandled;
+
+Event::listen(function (CommandHandled $event) {
+    logger()->info('Command handled', [
+        'command' => $event->message::class,
+        'duration_ms' => $event->durationMs,
+    ]);
+});
+```
+
+Gli eventi senza listener non vengono nemmeno creati, quindi costano circa un microsecondo per dispatch. Imposta `'events' => false` per disattivarli. `CommandFailed` viene lanciato prima che l'eccezione sia rilanciata.
+
+---
+
+## Test
+
+Sostituisci un bus con un fake per verificare cosa invia il tuo codice senza eseguire gli handler:
+
+```php
+use TheCorps\LaravelCqrs\Facades\CommandBus;
+use TheCorps\LaravelCqrs\Facades\QueryBus;
+
+CommandBus::fake();
+
+$this->post('/users', [...]);
+
+CommandBus::assertDispatched(CreateUserCommand::class);
+CommandBus::assertDispatched(fn (CreateUserCommand $command) => $command->email === 'ada@example.com');
+CommandBus::assertDispatched(CreateUserCommand::class, 1);       // esattamente una volta
+CommandBus::assertNotDispatched(DeleteUserCommand::class);
+CommandBus::assertNothingDispatched();
+```
+
+Con il fake, `dispatch()` restituisce `null` oppure la risposta configurata per classe; una closure riceve il messaggio:
+
+```php
+QueryBus::fake([
+    GetUserQuery::class => fn (GetUserQuery $query) => User::factory()->make(['id' => $query->userId]),
+]);
+
+CommandBus::fake()->respondWith(CreateUserCommand::class, 42);
+```
+
+Il fake sostituisce anche il bus iniettato tramite `CommandBusInterface` / `QueryBusInterface` o le classi concrete. `dispatched()` e `hasDispatched()` restituiscono i messaggi registrati per asserzioni personalizzate.
+
+Per testare un handler, invia il messaggio con il bus reale, così validazione e transazione vengono eseguite come in produzione.
+
+---
+
+## Comandi Artisan
+
+| Comando | Scopo |
+| --- | --- |
+| `make:cqrs-command Billing/CreateInvoice [--validator] [--force]` | Crea il command e il suo handler (e validator) in `app/Domain/Billing/Commands/CreateInvoice/` |
+| `make:cqrs-query Billing/GetInvoice [--validator] [--force]` | Crea la query e il suo handler (e validator) in `app/Domain/Billing/Queries/GetInvoice/` |
+| `cqrs:list [--path=app]` | Elenca ogni command e query con handler e validator; esce con errore se uno non si risolve, quindi è utile in CI |
+| `cqrs:install-agent-rules` | Installa le regole per i coding agent (vedi sotto) |
+
+Le classi generate si chiamano `{UseCase}Command`, `{UseCase}Query`, `{UseCase}Handler` e `{UseCase}Validator`. Il namespace radice si cambia con `cqrs.generators.namespace` (default `Domain`, sotto il namespace dell'applicazione); il codice generato si personalizza con:
+
+```bash
+php artisan vendor:publish --tag=cqrs-stubs
+```
+
+---
+
 ## Configurazione
 
-Dopo la pubblicazione, `config/cqrs.php` espone tre aree di configurazione.
+Dopo la pubblicazione, `config/cqrs.php` espone le pipeline e le opzioni descritte sotto.
 
 ### Composizione della pipeline
 
@@ -328,6 +472,23 @@ La pipeline viene costruita una sola volta per istanza del bus e poi riutilizzat
 ],
 ```
 
+### Altre opzioni
+
+```php
+'transactions' => [
+    'connection' => null,  // connessione di default di TransactionBehavior; null = database.default
+    'attempts'   => 1,     // quante volte viene eseguito un command in caso di deadlock
+],
+
+'events' => true,          // lancia CommandDispatching/Handled/Failed e gli equivalenti per le query
+
+'conventions' => true,     // trova handler e validator per nome quando manca l'attributo
+
+'generators' => [
+    'namespace' => 'Domain',  // make:cqrs-* crea le classi sotto App\Domain
+],
+```
+
 ---
 
 ## Errori
@@ -336,7 +497,7 @@ Le configurazioni sbagliate falliscono con un'eccezione dedicata che indica la c
 
 | Eccezione | Quando viene lanciata |
 | --- | --- |
-| `MissingHandlerException` | il command o la query, e le sue classi padre, non dichiarano `#[CommandHandler]` / `#[QueryHandler]` |
+| `MissingHandlerException` | il command o la query, e le sue classi padre, non dichiarano `#[CommandHandler]` / `#[QueryHandler]` e nessun handler viene trovato per convenzione |
 | `InvalidHandlerException` | la classe handler dichiarata non esiste o non ha un metodo `handle()` |
 | `InvalidValidatorException` | la classe validator dichiarata non esiste o non ha un metodo `validate()` |
 | `InvalidPipelineException` | una voce della pipeline non è una classe `PipelineBehaviorInterface`, la configurazione della pipeline non è una lista, oppure un messaggio arriva in fondo alla pipeline senza essere gestito |
@@ -352,10 +513,16 @@ src/
 │   │   ├── Commands/
 │   │   │   ├── CommandHandler.php     ← #[CommandHandler(HandlerClass::class)]
 │   │   │   └── CommandValidator.php   ← #[CommandValidator(ValidatorClass::class)]
-│   │   └── Queries/
-│   │       ├── QueryHandler.php       ← #[QueryHandler(HandlerClass::class)]
-│   │       └── QueryValidator.php     ← #[QueryValidator(ValidatorClass::class)]
+│   │   ├── Queries/
+│   │   │   ├── QueryHandler.php       ← #[QueryHandler(HandlerClass::class)]
+│   │   │   └── QueryValidator.php     ← #[QueryValidator(ValidatorClass::class)]
+│   │   └── Transactions/
+│   │       ├── Transactional.php      ← #[Transactional(connection, attempts)]
+│   │       └── WithoutTransaction.php ← #[WithoutTransaction]
 │   └── Interfaces/
+│       ├── Bus/
+│       │   ├── CommandBusInterface.php        ← tipo da usare per iniettare il command bus
+│       │   └── QueryBusInterface.php          ← tipo da usare per iniettare il query bus
 │       ├── Commands/
 │       │   ├── CommandInterface.php           ← implementa su ogni Command DTO
 │       │   ├── CommandHandlerInterface.php    ← implementa su ogni CommandHandler
@@ -366,6 +533,8 @@ src/
 │       │   └── ValidatesQueryInterface.php    ← implementa su ogni QueryValidator
 │       └── Pipeline/
 │           └── PipelineBehaviorInterface.php  ← implementa per behavior personalizzati
+├── Console/                              ← make:cqrs-command, make:cqrs-query, cqrs:list, cqrs:install-agent-rules
+├── Events/                               ← Command/Query Dispatching, Handled, Failed
 ├── Exceptions/                           ← CqrsException e sottoclassi
 ├── Pipeline/
 │   ├── Behaviors/
@@ -376,12 +545,17 @@ src/
 │   ├── MetadataResolver.php  ← legge attributi PHP via reflection (cache statica)
 │   └── Pipeline.php          ← compone ed esegue la catena di behavior
 ├── Bus/
+│   ├── Bus.php         ← logica di dispatch comune ed eventi
 │   ├── CommandBus.php  ← bus concreto registrato nel container
 │   └── QueryBus.php
 ├── Facades/
-│   ├── CommandBus.php  ← facade Laravel
+│   ├── CommandBus.php  ← facade Laravel, con fake()
 │   └── QueryBus.php
-└── CqrsServiceProvider.php  ← registra i bus, unisce config, pubblica i file
+├── Support/                              ← lettore di attributi, ricerca classi, installer delle regole per agenti
+├── Testing/
+│   ├── CommandBusFake.php  ← installato da CommandBus::fake()
+│   └── QueryBusFake.php    ← installato da QueryBus::fake()
+└── CqrsServiceProvider.php  ← registra i bus, unisce config, pubblica file e stub
 ```
 
 ---
