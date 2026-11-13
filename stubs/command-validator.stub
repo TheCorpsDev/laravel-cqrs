@@ -1,0 +1,16 @@
+<?php
+
+namespace {{ namespace }};
+
+use TheCorps\LaravelCqrs\Contracts\Interfaces\Commands\ValidatesCommandInterface;
+
+final class {{ class }} implements ValidatesCommandInterface
+{
+    /**
+     * @param {{ message }} $command
+     */
+    public function validate(object $command): void
+    {
+        //
+    }
+}

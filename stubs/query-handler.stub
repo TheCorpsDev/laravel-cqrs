@@ -1,0 +1,13 @@
+<?php
+
+namespace {{ namespace }};
+
+use TheCorps\LaravelCqrs\Contracts\Interfaces\Queries\QueryHandlerInterface;
+
+final class {{ class }} implements QueryHandlerInterface
+{
+    public function handle({{ message }} $query): mixed
+    {
+        return null;
+    }
+}

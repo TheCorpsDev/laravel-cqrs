@@ -1,0 +1,19 @@
+<?php
+
+namespace {{ namespace }};
+
+use TheCorps\LaravelCqrs\Contracts\Attributes\Queries\QueryHandler;
+{{ validatorImport }}use TheCorps\LaravelCqrs\Contracts\Interfaces\Queries\QueryInterface;
+
+/**
+ * Replace mixed with the type {{ handler }}::handle() returns.
+ *
+ * @implements QueryInterface<mixed>
+ */
+#[QueryHandler({{ handler }}::class)]
+{{ validatorAttribute }}final class {{ class }} implements QueryInterface
+{
+    public function __construct(
+        // public readonly int $id,
+    ) {}
+}

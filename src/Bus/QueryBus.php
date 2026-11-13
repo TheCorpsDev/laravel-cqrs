@@ -2,32 +2,29 @@
 
 namespace TheCorps\LaravelCqrs\Bus;
 
-use TheCorps\LaravelCqrs\Pipeline\Pipeline;
+use TheCorps\LaravelCqrs\Events\QueryFailed;
+use TheCorps\LaravelCqrs\Events\QueryHandled;
+use TheCorps\LaravelCqrs\Events\QueryDispatching;
+use TheCorps\LaravelCqrs\Contracts\Interfaces\Bus\QueryBusInterface;
 use TheCorps\LaravelCqrs\Contracts\Interfaces\Queries\QueryInterface;
 
 /**
  * CQRS query bus: routes queries through the configured pipeline.
  */
-class QueryBus
+class QueryBus extends Bus implements QueryBusInterface
 {
-    /**
-     * Creates a new query bus instance.
-     *
-     * @param Pipeline $pipeline The behavior pipeline to pass queries through.
-     */
-    public function __construct(
-        private readonly Pipeline $pipeline,
-    ) {}
-
     /**
      * Dispatches a query through the pipeline and returns the result.
      *
-     * @param QueryInterface $query The query to dispatch.
+     * @template TResult
      *
-     * @return mixed
+     * @param QueryInterface<TResult> $query The query to dispatch.
+     *
+     * @return TResult
      */
     public function dispatch(QueryInterface $query): mixed
     {
-        return $this->pipeline->handle($query);
+        /** @var TResult */
+        return $this->send($query, QueryDispatching::class, QueryHandled::class, QueryFailed::class);
     }
 }

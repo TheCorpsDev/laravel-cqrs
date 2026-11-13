@@ -1,0 +1,16 @@
+<?php
+
+namespace {{ namespace }};
+
+use TheCorps\LaravelCqrs\Contracts\Interfaces\Queries\ValidatesQueryInterface;
+
+final class {{ class }} implements ValidatesQueryInterface
+{
+    /**
+     * @param {{ message }} $query
+     */
+    public function validate(object $query): void
+    {
+        //
+    }
+}

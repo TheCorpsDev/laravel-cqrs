@@ -1,0 +1,13 @@
+<?php
+
+namespace {{ namespace }};
+
+use TheCorps\LaravelCqrs\Contracts\Interfaces\Commands\CommandHandlerInterface;
+
+final class {{ class }} implements CommandHandlerInterface
+{
+    public function handle({{ message }} $command): void
+    {
+        //
+    }
+}

@@ -74,4 +74,68 @@ return [
         'failure_level' => 'warning',
     ],
 
+    /*
+    |--------------------------------------------------------------------------
+    | Transactions
+    |--------------------------------------------------------------------------
+    |
+    | Defaults for the transaction TransactionBehavior opens around a command.
+    | A command can override them with #[Transactional(connection, attempts)]
+    | or skip the transaction entirely with #[WithoutTransaction].
+    |
+    |   connection — database connection name (null = default connection)
+    |   attempts — how many times to run the command when a deadlock occurs
+    |
+    */
+
+    'transactions' => [
+        'connection' => null,
+        'attempts' => 1,
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Events
+    |--------------------------------------------------------------------------
+    |
+    | When enabled, the buses fire CommandDispatching, CommandHandled and
+    | CommandFailed (and their Query counterparts) around every dispatch.
+    | Events without listeners cost almost nothing.
+    |
+    */
+
+    'events' => true,
+
+    /*
+    |--------------------------------------------------------------------------
+    | Naming conventions
+    |--------------------------------------------------------------------------
+    |
+    | When enabled, a command or query without a #[CommandHandler] or
+    | #[QueryHandler] attribute is handled by the class in the same namespace
+    | named after it: CreateUserCommand → CreateUserCommandHandler or
+    | CreateUserHandler. Its validator, if any, is found the same way. Classes
+    | found by convention must implement the matching handler or validator
+    | interface. Attributes always take precedence.
+    |
+    */
+
+    'conventions' => true,
+
+    /*
+    |--------------------------------------------------------------------------
+    | Generators
+    |--------------------------------------------------------------------------
+    |
+    | make:cqrs-command and make:cqrs-query create classes under this
+    | namespace, relative to the application namespace (App\Domain by default).
+    | Publish the stubs with "php artisan vendor:publish --tag=cqrs-stubs"
+    | to customise the generated code.
+    |
+    */
+
+    'generators' => [
+        'namespace' => 'Domain',
+    ],
+
 ];

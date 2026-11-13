@@ -2,6 +2,7 @@
 
 namespace TheCorps\LaravelCqrs;
 
+use Closure;
 use ReflectionClass;
 use ReflectionNamedType;
 use TheCorps\LaravelCqrs\Bus\QueryBus;
@@ -9,14 +10,17 @@ use Illuminate\Support\ServiceProvider;
 use TheCorps\LaravelCqrs\Bus\CommandBus;
 use TheCorps\LaravelCqrs\Pipeline\Pipeline;
 use Illuminate\Contracts\Container\Container;
+use Illuminate\Contracts\Config\Repository;
 use TheCorps\LaravelCqrs\Pipeline\MetadataResolver;
 use TheCorps\LaravelCqrs\Console\InstallAgentRulesCommand;
 use TheCorps\LaravelCqrs\Exceptions\InvalidPipelineException;
 use TheCorps\LaravelCqrs\Contracts\Interfaces\Pipeline\PipelineBehaviorInterface;
-use TheCorps\LaravelCqrs\Contracts\Attributes\Queries\QueryHandler as QueryHandlerAttr;
-use TheCorps\LaravelCqrs\Contracts\Attributes\Queries\QueryValidator as QueryValidatorAttr;
-use TheCorps\LaravelCqrs\Contracts\Attributes\Commands\CommandHandler as CommandHandlerAttr;
-use TheCorps\LaravelCqrs\Contracts\Attributes\Commands\CommandValidator as CommandValidatorAttr;
+use Illuminate\Contracts\Events\Dispatcher;
+use TheCorps\LaravelCqrs\Console\MakeQueryCommand;
+use TheCorps\LaravelCqrs\Console\MakeCommandCommand;
+use TheCorps\LaravelCqrs\Console\ListMessagesCommand;
+use TheCorps\LaravelCqrs\Contracts\Interfaces\Bus\QueryBusInterface;
+use TheCorps\LaravelCqrs\Contracts\Interfaces\Bus\CommandBusInterface;
 
 /**
  * Service provider that registers the CommandBus and QueryBus with their
@@ -37,22 +41,23 @@ class CqrsServiceProvider extends ServiceProvider
         $this->mergeConfigFrom(__DIR__ . '/../config/cqrs.php', 'cqrs');
 
         $this->app->singleton(
-            CommandBus::class,
-            fn(Container $app): CommandBus => new CommandBus($this->makePipeline(
-                $app,
-                'cqrs.command_pipeline',
-                new MetadataResolver(CommandHandlerAttr::class, CommandValidatorAttr::class),
-            ))
+            CommandBusInterface::class,
+            fn(Container $app): CommandBus => new CommandBus(
+                $this->makePipeline($app, 'cqrs.command_pipeline', MetadataResolver::forCommands($this->conventions($app))),
+                $this->events($app),
+            )
         );
 
         $this->app->singleton(
-            QueryBus::class,
-            fn(Container $app): QueryBus => new QueryBus($this->makePipeline(
-                $app,
-                'cqrs.query_pipeline',
-                new MetadataResolver(QueryHandlerAttr::class, QueryValidatorAttr::class),
-            ))
+            QueryBusInterface::class,
+            fn(Container $app): QueryBus => new QueryBus(
+                $this->makePipeline($app, 'cqrs.query_pipeline', MetadataResolver::forQueries($this->conventions($app))),
+                $this->events($app),
+            )
         );
+
+        $this->app->alias(CommandBusInterface::class, CommandBus::class);
+        $this->app->alias(QueryBusInterface::class, QueryBus::class);
     }
 
     /**
@@ -65,12 +70,58 @@ class CqrsServiceProvider extends ServiceProvider
         if ($this->app->runningInConsole()) {
             $this->commands([
                 InstallAgentRulesCommand::class,
+                MakeCommandCommand::class,
+                MakeQueryCommand::class,
+                ListMessagesCommand::class,
             ]);
 
             $this->publishes([
                 __DIR__ . '/../config/cqrs.php' => $this->app->configPath('cqrs.php'),
             ], 'cqrs-config');
+
+            $this->publishes([
+                __DIR__ . '/../stubs' => $this->app->basePath('stubs/cqrs'),
+            ], 'cqrs-stubs');
         }
+    }
+
+    /**
+     * Whether handlers and validators may be found by naming convention.
+     */
+    private function conventions(Container $app): bool
+    {
+        return (bool) $this->config($app)->get('cqrs.conventions', true);
+    }
+
+    /**
+     * Returns a closure resolving the event dispatcher the buses fire events on,
+     * or null when events are disabled. Resolving it on every dispatch keeps
+     * Event::fake() working even after a bus was first used.
+     *
+     * @return (Closure(): ?Dispatcher)|null
+     */
+    private function events(Container $app): ?Closure
+    {
+        if (!$this->config($app)->get('cqrs.events', true)) {
+            return null;
+        }
+
+        return static function () use ($app): ?Dispatcher {
+            $events = $app->bound('events') ? $app->make('events') : null;
+
+            return $events instanceof Dispatcher ? $events : null;
+        };
+    }
+
+    private function config(Container $app): Repository
+    {
+        $config = $app->make('config');
+
+        if (!$config instanceof Repository) {
+            throw new \LogicException('The config repository is not available.');
+        }
+
+        return $config;
     }
 
     /**
@@ -90,9 +141,7 @@ class CqrsServiceProvider extends ServiceProvider
      */
     private function makePipeline(Container $app, string $configKey, MetadataResolver $resolver): Pipeline
     {
-        /** @var \Illuminate\Contracts\Config\Repository $config */
-        $config = $app->make('config');
-        $classes = $config->get($configKey);
+        $classes = $this->config($app)->get($configKey);
 
         if (!is_array($classes) || !array_is_list($classes)) {
             throw InvalidPipelineException::notAList($configKey);
