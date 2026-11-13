@@ -4,14 +4,14 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 and the project follows [Semantic Versioning](https://semver.org/).
 
-## [1.2.0] - Unreleased
+## [1.2.0] - 2026-11-13
 
 ### Added
 
 - Coding-agent integration. The package ships a `laravel-cqrs` skill and a guideline at the paths read by [Laravel Boost](https://laravel.com/docs/boost) (`resources/boost`), so `boost:install` sets them up for every agent Boost supports.
 - `php artisan cqrs:install-agent-rules` installs the same skill without Boost, into `.agents/skills` and `.claude/skills`, and adds a marker-delimited pointer block to `AGENTS.md` and `CLAUDE.md`. Content outside the markers, line endings and symlinked files are preserved.
 
-## [1.1.0] - Unreleased
+## [1.1.0] - 2026-11-13
 
 ### Fixed
 
