@@ -74,4 +74,24 @@ return [
         'failure_level' => 'warning',
     ],
 
+
+    /*
+    |--------------------------------------------------------------------------
+    | Transactions
+    |--------------------------------------------------------------------------
+    |
+    | Defaults for the transaction TransactionBehavior opens around a command.
+    | A command can override them with #[Transactional(connection, attempts)]
+    | or skip the transaction entirely with #[WithoutTransaction].
+    |
+    |   connection — database connection name (null = default connection)
+    |   attempts — how many times to run the command when a deadlock occurs
+    |
+    */
+
+    'transactions' => [
+        'connection' => null,
+        'attempts' => 1,
+    ],
+
 ];
